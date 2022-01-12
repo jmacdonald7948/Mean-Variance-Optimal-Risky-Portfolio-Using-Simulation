@@ -1,0 +1,198 @@
+---
+title: 'Project A2: Mean-Variance OptimalRiskyPortfolioUsing Simulation'
+author: "Jackie MacDonald"
+date: "10/12/2020"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+
+```{r message=FALSE}
+
+```
+
+## [1] Introduction
+  Portfolio optimization is the process of selecting what the best portfolio is, out of a set of portfolios, according to some objective or constraints. It is important in the finance world for portfolio managers to understand how to use portfolio optimization to their advantage. Thousands of firms in the United States conduct portfolio management, but one of the key issues they run into after identifying what assets to put into portfolio is what weight, or ratio of assets put into a portfolio, will produce the best outcome. There are multiple ways to optimize a portfolio, but for this assignment we had to simulate the weights for each of the selected securities and check them using the Sharpe ratio to figure out which portfolio was the best. The portfolio with the best Sharpe ratio will tell us that the selected portfolio will have the highest return for the lowest risk. First we'll get data on stocks using the "quantmod" library, then we'll calculate the matrices that go into analyzing portfolios such as stock means, we then simulate the portfolio weights, calculate the output matrices portfolio means and sigma using the simulated weights,and use the sharpe ratio to figure out the best portfolio. 
+
+```{r message=FALSE}
+#first we get the libraries we'll need
+library(quantmod)
+library(ggplot2)
+library(dplyr)
+library(data.table)
+```
+
+```{r message=FALSE}
+myMeanVarPort<-function(tickers,begin_date,end_date,rf){ 
+ ticks<-fread(tickers)[[1]] 
+ dates_str<-paste0(begin_date,"/",end_date) #formatting for xts
+ #getting stock data
+ retout <- xts()
+ for(i in 1:length(ticks)){
+   prices <- getSymbols(ticks[i], auto.assign = F)
+   returns <- periodReturn(prices, period = "monthly", 
+                           type = "arithmetic")
+   retout <- merge.xts(retout, returns)
+ }
+ 
+ colnames(retout) <- ticks
+ retout<-retout[dates_str] #subsetting stocks data by date
+ meanret <- colMeans(retout,na.rm = T) #calculating the mean vector
+ covar <- var(retout)  #covariance matrix
+ 
+ #simulating the weights number of portfolios
+ niter <- 100   # Set the number of iterations here
+ randomnums <- data.frame(replicate(length(ticks), runif(niter, 1, 10)))
+ wt_sim <- randomnums / rowSums(randomnums)
+ weight <- matrix(data = NA, nrow = length(ticks), ncol = 1)
+ Results <- matrix(data = NA, nrow = niter, ncol = length(ticks)+2)
+ 
+ # loop: each i is a portfolio
+ for (i in 1:niter){
+   # inner loop places weights into Results
+   for (k in 1:length(ticks)) {
+     Results[i,k] = weight[k,1] = wt_sim[i,k]
+   }
+   Results[i,length(ticks)+1] <- t(weight) %*% meanret   #portfolio mean
+   Results[i,length(ticks)+2] <- sqrt(t(weight) %*% covar %*% weight)   #portfolio sigma 
+ }
+ 
+ colnames(Results) <- c(ticks, "PortMean", "PortSigma")
+ Results <- data.table(Results)
+ return(list(stock_mean=round(meanret,5),cov_mat=round(covar,5),portfolio_stats=round(Results,5)))
+}
+```
+## [2]: myMeanVarPort Function
+### [2.1] Creating the Function
+ Creating the function “myMeanVarPort“ we specified the inputs we’ll need for it  as tickers, begin date, end date, and risk free rate. I then made it so that the function freads the tickers in the first column of the text file it reads in and stores it in a variable called “ticks.” The function then has to format the dates we input properly by using the “paste0” function to put a “/” between the beginning and end date in order to be able to later call upon and subset stock data by dates of a “xts” time series object that is created from “getSymbols” and “periodReturn” functions. We then store our new formatted string of dates in a variable called “dates_str.” 
+
+  Now that we told the function how to read the tickers and format the dates of the portfolios for each security, we then need to get our stock data. First we create an empty time series object using the “xts” package and name the new variable “retout”. We then create a for loop that says for the length of how many tickers we have we’ll use the “getSymbols” function to obtain monthly adjusted prices for each ticker and store it in a variable called “prices” and using the “periodReturns” function we return the periodic returns of our new price variable and set the period to monthly so we calculate the monthly returns. Using the “merge.xts” function we take our empty “retout” time series object and merge it with our newly made “returns” variable putting our monthly returns data into it and ending our first for loop. Taking our tickers from our tick variable we use the “colnames” function to name each column’s monthly return price by its respective ticker in “retout.” We then subset our return data in retout by the dates we input. 
+
+  For each ticker we now  have monthly returns for our dates and ticker inputs in our “myMeanVarPort“ function and we want to calculate our mean return and covariance to help reduce risk and diversify our portfolios. To calculate the means we use the “colMeans” function of the “retout” and tell it to remove any NAs in our data by setting “na.rm=T” and we store our mean vector into a variable called “meanret.” Then we calculate the variance of all our variables in “retout” using our “var” function and store the variance matrix in a variable called “covar.” To calculate the covariance the long way we would multiply the correlation coefficient of returns, our "retout", by the standard deviation for each of our securities. The equation below shows how it's calculated.
+
+_Note the equations below are for 2 securities_
+  
+$Cov({r_D,r_E})=\rho_{D,E}\sigma_D\sigma_E$
+
+Where:
+
+1.$\rho_{D,E}$ is the correlation coefficient of returns
+
+2.$\sigma_D$ is the standard deviation of returns for Security D 
+
+3.$\sigma_E$ is the standard deviation of returns for Security E  
+  
+  We’ll want the function to find our portfolios’ weight to determine how dependent our portfolio’s performance is on each of our individual stocks. For this we’ll be simulating our weights by multiplying the number of securities/ticks by 100 iterations. First we’ll create a variable to set the number of iterations and name it “niter.” We then create a dataframe of random numbers consisting of a column for every tick and a row for every iteration we have containing random values between 1 and 10 using the runif function and store it in a variable called “randomnums.”  Now we normalize the weight by creating a variable called “wt_sim” and diving the “randomnums” variable we just created by the sum of the rows from the randomnums variable. We then make an empty matrix called “weight” that has the number of rows equal to how many ticks we have and number of columns equal to one. The we create a second empty matrix called “Results” which has the number of rows equal the number of iterations, or “niter,”	and the number of columns be the length of how many ticks we have plus 2, so we can put extra information in at the end. Both matrices will be used and filled with data later in the function.
+	
+  Now that we have empty matrices we want to fill them with data, so we create an outer “for loop” that says we select a row for every portfolio, or “niter,” we have and use an inner loop to select a column for every tick we have and place the calculated weights of the rows and columns into their respective place in the “Results” matrix. We also want to include other relevant information about the portfolios such as portfolio means, and portfolio sigma. To find our portfolio means we transpose our “weight” matrix and multiply it by our “meanret,”or column means of our “retout” object, and store the calculations in a new column that will be placed as the first column right after the last tick we have.To calculate our portfolio mean return we are essentially multiplying our weight of every asset by our return and adding them up. Next we find our portfolio sigma which is the square root of the transposed weight matrix times our covariance matrix “covar” times our normal weight matrix.To calculate our portfolio sigma for multiple securities we are essentially multiplying our weight prime by sigma, getting our results, and multiplying it by our weight again. We’ll store the calculations for our portfolio sigma in a new column that will be placed two columns after the last tick we have. The equations for the sigma/risk, and portfolio return can be seen below.
+
+_Note the equations below are for 2 securities_
+
+_Return:_
+
+$r_{P}={w_D}{r_D}+{w_E}{r_E}$
+
+Where:
+
+1.$r_P$ is the Portfolio Return
+
+2.$w_D$ is the weight of asset D
+
+3.$r_D$ is the return of asset D
+
+4.$w_E$ is the weight of asset E
+
+4.$r_E$ is the return of asset E
+
+_Risk:_
+
+$\sigma^2_{p}=w^2_{D}\sigma^2_{D}+w^2_{E}\sigma^2_{E}+2w_Dw_ECov({r_D,r_E})$
+
+Where:
+
+1.$\sigma^2_{D}$ is the variance of security D
+
+2.$\sigma^2_{E}$ is the variance of security E
+
+3.$Cov({r_D,r_E})$ is the covariance of returns for security D and security E
+
+  Our “Results” matrix now has our portfolio weights, our portfolio sigma, and portfolio means. With the data we just put in we want to give the columns of the matrix column names so using the “colnames” function we can name the first set of columns as their ticks using our ticker file, and name the last two columns “PortMean,” and “PortSigma.” Then we take our “Results” matrix and use the “data.table” function to convert our matrix into a data table. Then we finally close our “myMeanVarPort” function by having it return a list of “stock_mean” which is our “meanret” variable with rounded decimals, our “cov_mat” which is our “covar” matrix with rounded decimals, and our “portfolio_stats” which is our newly formed “Results” data table with rounded decimals and store it in a variable called “port_performance.”
+
+```{r message=FALSE}
+ticker_file<- "C:/Users/15852/OneDrive/Desktop/assignment 3/Ticks.txt"
+set.seed(12)
+port_performance<-myMeanVarPort(tickers = ticker_file,begin_date = "20140101",end_date = "20171231",rf=0 )
+#print out of head of portfolio stats (weights,portfolio mean, sigma)
+head(port_performance$portfolio_stats)
+```
+```{r}
+#print out of covariance matrix
+port_performance$cov_mat
+```
+```{r}
+#print out of stockmean vector
+port_performance$stock_mean
+```
+### [2.2] Running the Function
+  Once we run the  “myMeanVarPort“ function we can now feed our inputs into it. We had to create a “.txt” file with the specified ticker names using the fwrite function so we can put it through our function and be able to call upon it and we stored the .txt file in a variable called “ticker_file.” In order to replicate the same results every time for our function we used the “set.seed” function and set it to 12 so we use the same random pseudo numbers associated with it every time. Finally we create a variable with the inputs for our function called “port_performance” where we have a file containing a vector of tickers, a begin date, an end date, and our risk free rate. We can now read our inputs into our “myMeanVarPort“ function and get our data outputs. 
+```{r}
+minmret<-min(port_performance$portfolio_stats$PortMean)
+maxmret<-max(port_performance$portfolio_stats$PortMean)
+seqmret<-seq(round(minmret,3)-.001, maxmret+.001, .001)
+
+optim<- port_performance$portfolio_stats[,`:=` (Port_Number=index(port_performance$portfolio_stats),
+                                               Ints= cut(PortMean ,breaks = seqmret))][,Lower := as.numeric( sub("\\((.+),.*", "\\1", Ints))]
+optim<-optim[,.(lowerval=min(Lower),
+                sig_opt=min(PortSigma),
+                retn_optim = PortMean[which.min(PortSigma)],
+                numb = length(PortSigma),
+                portID=Port_Number[which.min(PortSigma)]),by=.(Ints)]
+```
+## [3]: Plotting Our Optimal Portfolios
+### [3.1] Optomizing Our Portfolios
+  Now that we have fed our inputs into our function and received our vector of stock means, covariance matrix, portfolio weights, sigma, and portfolio mean we now want to plot our portfolios and figure out what portfolios are the best based on the constraints we want. We want to ask what has the highest return and the lowest risk? The sharpe ratio helps us to this by having the expected rate of return minus the risk free rate and divided by the risk. You can see the sharpe ratio equation below.
+  
+$S_{P}=\left( \frac{E(r_{{P}})-r_f}{\sigma_P} \right)$
+
+Where:
+
+1.$S_{P}$ is the sharpe ratio
+
+2.$E(r_{P}$ is the expected portfolio return
+
+3.$r_{P}$ is the portfolio return
+
+4.$r_f$ is the risk free rate
+
+5.$\sigma_P$ is the risk
+
+  To optimize all of our portfolios we’ll need to put constraints on them by creating breaks and dividing them into ranges. First we’ll create a variable called “minret” with the “min” function which will find the minimum return of the “PortMean” or portfolio mean in our “portfolio_stats” data table. Then we’ll create a variable called “maxret” which will take the “max” function and find the maximum return of our portfolio means. Then we’ll create a third variable called “seqmret” which will create a sequence from the minimum return of -.001 to the mx return of .001 in a sequence of .001. We’ll want to break up our “portfolio_stats” by putting breaks in so first we’ll create a variable called “optim” which will represent our optimum portfolios. “Optim” will take our “portfolio_stats” data table and create a new column called “Port_Numner” which will extract our “portfolio_stats” from our “port_performance” variable by using the “index” function, then it will create another column called “Ints” which will use the “cut” function to break out portfolio means up using the “seqmret” increments we already specified.  We go on to create more columns in optim further dividing the data up into the optimum returns, sigmas, and portfolio IDs.
+```{r}
+xcoord <- min(optim$sig_opt)
+ycoord <- optim$retn_optim[which.min(optim$sig_opt)]
+minvar_port <- optim$portID[which.min(optim$sig_opt)]
+
+ggplot(data = optim , aes(x = sig_opt, y = retn_optim)) +
+   geom_point(pch = 10, colour = "red", size = 3)+
+   annotate("segment", x = xcoord, y = ycoord, 
+            xend = xcoord + .005, yend = ycoord,
+            arrow=arrow(), color = "blue") +
+   annotate("text", x = xcoord+.0065, y = ycoord, label = paste("Portfolio",minvar_port), color = 'black')+
+   labs(title ="Highest Sharpe Ratio Portfolio", x = "Sigma_Optimum", y = "Return_Optimum")+
+   theme(plot.title = element_text(hjust = 0.5))
+```
+
+### [3.2] Plotting and Annotating Our Portfolios
+  Now that we have the data cut and broken up into groups we want to specify the portfolio we are going to want to select as the “best” portfolio. Since we are using the Sharpe ratio we’ll want the portfolio to have the lowest risk with the highest return. So when we are specifying the portfolio we want when we go to plot it, we’ll want the portfolio that has the x coordinate with the minimum portfolio sigma and the y coordinate that has the optimum return is for the lowest portfolio sigma. We create variables called “xcoord” and “ycoord” that we’ll use when we plot the data to tell the graph that’s where the portfolio with the highest sharpe ratio is located at. 
+
+  We’ll use “ggplot” to plot our broken up “optim” data and set the y-axis to the optimum return variable “retn_optim” and the x-axis to the optimum sigma variable “sig_opt.” We specified that we’ll be plotting our data with red circles with a cross in the middle of them, this is a shape specified by the shape identity “pch=10.” We then annotate our portfolio we found with the highest sharpe ratio using the “xcoord” and “ycoord” variables and tell ggplot to create a blue arrow annotating it and generate a label that pastes the identified portfolios ID number in it so we can go back and see what portfolio it is. Once we plot everything our graph tells us that “Portfolio 88” has the highest Sharpe ratio, and if you look at the graph you can see that it has the highest return, or “retn_optim,” with the lowest risk, “sig_opt.”
+
+## [4] List of Things Learned
+* How to create simulated weights
+* Sharpe ratio equation
+* Matrix algebra
+* Getting current stock data using quantmod
+
+## [5] Conclusion
+  In this assignment, we have studied portfolio optimization and how to measure and simulate weights of a portfolio using the sharpe ratio. After getting current stock data from our quantmod library, we created our stock means vector and covariance matrix, simulated weights of a portfolio, and based on those we calculated our portfolio means, sigma, and weight (explained in the model equations). Then we made a ggplot and used the sharpe ratio to give the data constraints and figure out what the best portfolio would be based on those constraints. We set up our ggplot so that our x-axis would be our optimum sigma, or risk, and our y-axis would be our optimum return and we plotted our points based on our cut data. After analyzing our results visually using ggplot, we can see that where portfolio 88 is located that is where the slope is the highest on the graph indicating that portfolio 88 has the least amount of risk for the highest return out of all the portfolios. 
